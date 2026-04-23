@@ -1,4 +1,4 @@
-# LedBlink — Swiss Clock
+# SwissLedClock
 
 The onboard RGB LED on your ESP32-H2 blinks like a Swiss clock — once every 15 minutes to mark the quarter hours, and at the top of every hour it strikes four times plus once for each hour (just like the bells on a real clock).
 

@@ -2,7 +2,7 @@
 
 **Version:** 2.0
 **Date:** 2026-04-24
-**Project:** LedBlink — Swiss Clock
+**Project:** SwissLedClock
 **Platform:** ESP32-H2-DevKitC-1
 
 ---
