@@ -1,27 +1,26 @@
-# Functional Specification Document: ESP32-S3 LED Blink
+# Functional Specification Document: ESP32-H2 Swiss Clock LED
 
-**Version:** 1.0  
-**Date:** 2026-04-23  
-**Project:** LedBlink  
-**Platform:** ESP32-S3  
+**Version:** 2.0
+**Date:** 2026-04-24
+**Project:** LedBlink — Swiss Clock
+**Platform:** ESP32-H2-DevKitC-1
 
 ---
 
 ## 1. Purpose
 
-This document defines the functional requirements and expected behavior for the LedBlink firmware. The program serves as a hardware validation tool to confirm that an ESP32-S3 board is correctly programmed, that the development environment is functional, and that LED GPIO control is working.
+This firmware turns the onboard WS2812 RGB LED of the ESP32-H2-DevKitC-1 into a visual Swiss clock chime. It uses LED blinks to signal the passage of time in quarter-hour increments, exactly replicating the strike pattern of a traditional Swiss clock.
 
 ---
 
 ## 2. Scope
 
-This specification covers:
-- LED blink sequence logic
-- GPIO pin configuration
-- Timing parameters
-- Program termination behavior
+- Quarter-hour LED chime sequence (1–3 blinks)
+- Top-of-hour LED chime sequence (4 blinks + N hour strikes)
+- 12-hour repeating cycle
+- No RTC required — timing is software-based using FreeRTOS delays
 
-It does not cover wireless, networking, UART logging, or any peripheral other than a single GPIO-controlled LED.
+Out of scope: UART logging, Wi-Fi/BLE, RTC sync, user input, multiple LEDs.
 
 ---
 
@@ -29,118 +28,118 @@ It does not cover wireless, networking, UART logging, or any peripheral other th
 
 | Item | Requirement |
 |------|-------------|
-| MCU | ESP32-S3 |
-| LED | Onboard LED or external LED on a GPIO pin |
-| GPIO | One configurable output pin |
-| Power | USB or regulated 3.3V supply |
-
-If using an external LED, a current-limiting resistor (typically 220–470 Ω) must be placed in series between the GPIO pin and the LED.
+| MCU | ESP32-H2-DevKitC-1 |
+| LED | Onboard WS2812 RGB (GPIO 8) |
+| Power | USB or 3.3 V regulated supply |
+| Framework | ESP-IDF 5.4 |
 
 ---
 
-## 4. Functional Requirements
+## 4. Chime Pattern
 
-### 4.1 Blink Sequence
+The LED replicates the Westminster/Swiss quarter-hour chime logic:
 
-| ID | Requirement |
-|----|-------------|
-| FR-01 | The program shall blink the LED exactly **3 times** after startup. |
-| FR-02 | Each blink shall consist of: LED ON → short delay → LED OFF → short delay. |
-| FR-03 | The ON and OFF delays shall be equal and configurable via a single constant. |
-| FR-04 | After the third blink completes, the program shall enter an idle state and perform no further GPIO activity. |
+| Time | Event | LED Blinks |
+|------|-------|------------|
+| HH:15 | Quarter 1 | 1 blink |
+| HH:30 | Quarter 2 | 2 blinks |
+| HH:45 | Quarter 3 | 3 blinks |
+| HH:00 | Top of hour | 4 blinks, pause, then N blinks (where N = current hour 1–12) |
 
-### 4.2 GPIO Configuration
-
-| ID | Requirement |
-|----|-------------|
-| FR-05 | The LED GPIO pin number shall be defined as a named constant (e.g., `LED_PIN`). |
-| FR-06 | The GPIO pin shall be initialized as a digital output before the blink sequence begins. |
-| FR-07 | The LED shall be in the OFF state at program start and at program end. |
-
-### 4.3 Timing
-
-| ID | Requirement |
-|----|-------------|
-| FR-08 | The default ON delay shall be **500 ms**. |
-| FR-09 | The default OFF delay shall be **500 ms**. |
-| FR-10 | Delay values shall be defined as named constants to allow easy modification. |
+After the 12:00 chime (4 + 12 blinks) the cycle resets to 1:00.
 
 ---
 
-## 5. Behavioral Specification
+## 5. Functional Requirements
 
-### 5.1 State Diagram
+### 5.1 Timing
 
-```
-[INIT] → [BLINK_ON] → [BLINK_OFF] → (repeat 3×) → [IDLE]
-```
+| ID | Requirement |
+|----|-------------|
+| FR-01 | The firmware shall wait exactly `QUARTER_MS` (15 minutes) between chime events. |
+| FR-02 | Each blink shall consist of LED ON for `BLINK_ON_MS` followed by LED OFF for `BLINK_OFF_MS`. |
+| FR-03 | At the top of the hour, a pause of `CHIME_PAUSE_MS` shall separate the 4 quarter blinks from the hour strikes. |
 
-### 5.2 Sequence Description
+### 5.2 Chime Sequence
 
-```
-power-on / reset
-│
-├─ configure LED_PIN as output
-├─ set LED_PIN LOW (LED OFF)
-│
-└─ loop 3 times:
-    ├─ set LED_PIN HIGH  (LED ON)
-    ├─ delay LED_ON_MS
-    ├─ set LED_PIN LOW   (LED OFF)
-    └─ delay LED_OFF_MS
-│
-└─ enter idle loop (no GPIO activity)
-```
+| ID | Requirement |
+|----|-------------|
+| FR-04 | At quarter 1 (:15) the firmware shall blink 1 time. |
+| FR-05 | At quarter 2 (:30) the firmware shall blink 2 times. |
+| FR-06 | At quarter 3 (:45) the firmware shall blink 3 times. |
+| FR-07 | At quarter 4 (:00) the firmware shall blink 4 times, pause, then blink N times where N is the current hour (1–12). |
+| FR-08 | After the top-of-hour chime the hour counter shall advance by 1, wrapping from 12 back to 1. |
 
-### 5.3 Timing Diagram
+### 5.3 LED State
 
-```
-LED state:  _____|‾‾‾‾‾|_____|‾‾‾‾‾|_____|‾‾‾‾‾|_____  (idle)
-             t0  +500ms +1s  +1.5s +2s  +2.5s +3s
-```
-
-Total active duration: 3 × (500 ms + 500 ms) = **3 000 ms** (3 seconds).
+| ID | Requirement |
+|----|-------------|
+| FR-09 | The LED shall be OFF at startup and remain OFF between chime events. |
+| FR-10 | The LED shall return to OFF after every blink. |
 
 ---
 
 ## 6. Configuration Constants
 
-| Constant | Default Value | Description |
-|----------|---------------|-------------|
-| `LED_PIN` | Board-dependent | GPIO pin number for the LED |
-| `LED_ON_MS` | 500 | Duration the LED stays ON (milliseconds) |
-| `LED_OFF_MS` | 500 | Duration the LED stays OFF between blinks (milliseconds) |
-| `BLINK_COUNT` | 3 | Number of times the LED blinks |
+All user-tunable values are defined at the top of `main/led_blink_main.c`:
+
+| Constant | Default | Description |
+|----------|---------|-------------|
+| `LED_PIN` | `8` | GPIO pin for the WS2812 LED |
+| `LED_COLOR_R/G/B` | `20, 20, 20` | RGB color while LED is on (0–255) |
+| `BLINK_ON_MS` | `200` | LED on duration per blink (ms) |
+| `BLINK_OFF_MS` | `200` | LED off duration between blinks (ms) |
+| `CHIME_PAUSE_MS` | `800` | Pause between quarter and hour chimes at top of hour (ms) |
+| `QUARTER_MS` | `900000` | Interval between chime events = 15 min (ms) |
 
 ---
 
-## 7. Non-Functional Requirements
+## 7. Behavioral Specification
+
+### 7.1 State Diagram
+
+```
+[INIT] → [IDLE 15 min] → [CHIME] → [IDLE 15 min] → [CHIME] → ...
+```
+
+### 7.2 Chime Sequence at Top of Hour (e.g. 3:00)
+
+```
+LED: _|‾|_|‾|_|‾|_|‾|_  (pause)  _|‾|_|‾|_|‾|_
+      ← 4 quarter blinks →          ← 3 hour strikes →
+```
+
+### 7.3 Full 12-Hour Cycle Summary
+
+```
++0:15  → blink ×1
++0:30  → blink ×2
++0:45  → blink ×3
++1:00  → blink ×4, pause, blink ×1   (1 o'clock)
++1:15  → blink ×1
+...
++12:00 → blink ×4, pause, blink ×12  (12 o'clock)
+         → cycle resets to 1 o'clock
+```
+
+---
+
+## 8. Non-Functional Requirements
 
 | ID | Requirement |
 |----|-------------|
-| NFR-01 | The firmware shall compile and run under the ESP-IDF or Arduino framework for ESP32-S3. |
-| NFR-02 | The program shall complete the blink sequence within 5 seconds of startup. |
-| NFR-03 | The code shall be structured so that `LED_PIN`, `LED_ON_MS`, `LED_OFF_MS`, and `BLINK_COUNT` can be changed without modifying logic code. |
-| NFR-04 | The program shall not rely on any external library beyond the ESP-IDF HAL or Arduino core. |
+| NFR-01 | All configurable values shall be defined as named constants at the top of the source file. |
+| NFR-02 | Timing is software-based (FreeRTOS `vTaskDelay`). Accumulated drift over 12 hours is acceptable. |
+| NFR-03 | The firmware shall compile and run on ESP-IDF 5.4 targeting ESP32-H2. |
+| NFR-04 | The firmware shall use the `espressif/led_strip` component for WS2812 control. |
 
 ---
 
-## 8. Acceptance Criteria
+## 9. Acceptance Criteria
 
-The implementation is considered correct when:
-
-1. After flashing, the LED blinks exactly 3 times with visible ON/OFF transitions.
-2. Each ON period is approximately 500 ms; each OFF period is approximately 500 ms.
-3. After the third blink the LED remains OFF indefinitely.
-4. Changing `BLINK_COUNT` to any positive integer causes exactly that many blinks.
-5. Changing `LED_ON_MS` or `LED_OFF_MS` alters the blink timing accordingly.
-
----
-
-## 9. Out of Scope
-
-- Serial/UART debug output
-- Wi-Fi or Bluetooth functionality
-- Interrupts or RTOS tasks
-- Multiple LEDs
-- User input (buttons, touch)
+1. At :15 past any hour, exactly 1 blink is observed.
+2. At :30, exactly 2 blinks; at :45, exactly 3 blinks.
+3. At the top of the hour, exactly 4 blinks followed by a pause and N blinks (N = current hour).
+4. After 12:00 (4+12 blinks), the next top-of-hour chime is 4+1 blinks.
+5. The LED is off at all other times.
+6. Changing `QUARTER_MS` to a shorter value (e.g. 5000 ms) allows rapid functional testing.

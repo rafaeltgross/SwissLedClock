@@ -1,15 +1,29 @@
-/* Configuration constants — change only here (NFR-03) */
-#define LED_PIN      8       /* GPIO8 = onboard WS2812 RGB LED on ESP32-H2-DevKitC-1 */
-#define LED_ON_MS    500
-#define LED_OFF_MS   500
-#define BLINK_COUNT  3
-#define LED_COLOR_R  16      /* RGB color when LED is ON (0-255 each channel) */
-#define LED_COLOR_G  16
-#define LED_COLOR_B  16
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
+
+/* Configuration — change only here */
+#define LED_PIN           8       /* GPIO8 = onboard WS2812 on ESP32-H2-DevKitC-1 */
+#define LED_COLOR_R       20
+#define LED_COLOR_G       20
+#define LED_COLOR_B       20
+#define BLINK_ON_MS       200
+#define BLINK_OFF_MS      200
+#define CHIME_PAUSE_MS    800
+#define QUARTER_CHIMES    4
+#define QUARTER_MS        (15UL * 60UL * 1000UL)
+
+static void blink(led_strip_handle_t strip, int count)
+{
+    for (int i = 0; i < count; i++) {
+        ESP_ERROR_CHECK(led_strip_set_pixel(strip, 0, LED_COLOR_R, LED_COLOR_G, LED_COLOR_B));
+        ESP_ERROR_CHECK(led_strip_refresh(strip));
+        vTaskDelay(pdMS_TO_TICKS(BLINK_ON_MS));
+        ESP_ERROR_CHECK(led_strip_clear(strip));
+        if (i < count - 1)
+            vTaskDelay(pdMS_TO_TICKS(BLINK_OFF_MS));
+    }
+}
 
 void app_main(void)
 {
@@ -21,24 +35,26 @@ void app_main(void)
         .resolution_hz = 10 * 1000 * 1000,
         .flags.with_dma = false,
     };
-
     led_strip_handle_t strip;
     ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_cfg, &rmt_cfg, &strip));
+    ESP_ERROR_CHECK(led_strip_clear(strip));
 
-    /* FR-07: LED OFF at start */
-    led_strip_clear(strip);
+    int hour = 12;
+    int quarter = 0;
+    TickType_t wake = xTaskGetTickCount();
 
-    for (int i = 0; i < BLINK_COUNT; i++) {
-        led_strip_set_pixel(strip, 0, LED_COLOR_R, LED_COLOR_G, LED_COLOR_B);
-        led_strip_refresh(strip);
-        vTaskDelay(LED_ON_MS / portTICK_PERIOD_MS);
-
-        led_strip_clear(strip);
-        vTaskDelay(LED_OFF_MS / portTICK_PERIOD_MS);
-    }
-
-    /* FR-04 / FR-07: idle forever, LED stays OFF */
     while (1) {
-        vTaskDelay(portMAX_DELAY);
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(QUARTER_MS));
+
+        quarter++;
+        if (quarter == QUARTER_CHIMES) {
+            hour = (hour % 12) + 1;
+            blink(strip, QUARTER_CHIMES);
+            vTaskDelay(pdMS_TO_TICKS(CHIME_PAUSE_MS));
+            blink(strip, hour);
+            quarter = 0;
+        } else {
+            blink(strip, quarter);
+        }
     }
 }
