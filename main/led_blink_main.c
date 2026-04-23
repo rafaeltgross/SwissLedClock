@@ -1,5 +1,5 @@
 /* Configuration constants — change only here (NFR-03) */
-#define LED_PIN      48      /* GPIO48 = onboard WS2812 RGB LED on ESP32-S3-DevKitC-1 */
+#define LED_PIN      8       /* GPIO8 = onboard WS2812 RGB LED on ESP32-H2-DevKitC-1 */
 #define LED_ON_MS    500
 #define LED_OFF_MS   500
 #define BLINK_COUNT  3
